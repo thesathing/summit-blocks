@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>SUMMIT BLOCKS — Climb the Mountain!</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1c33;
+    font-family: "Trebuchet MS", "Segoe UI", Verdana, sans-serif; color: #fff; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+  .hidden { display: none !important; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.65); }
+  .hud-panel { background: rgba(8, 20, 40, 0.62); border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 10px; padding: 8px 12px; }
+  #hud-top { position: absolute; top: 12px; left: 12px; right: 12px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  #hud-left { min-width: 240px; }
+  #hud-height { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+  #hud-zone { font-size: 13px; font-weight: 800; color: #ffd166; letter-spacing: 2px; margin-top: 2px; }
+  #hud-zone[data-zone="snow"] { color: #9fd4ff; }
+  #hud-zone[data-zone="cliff"] { color: #f0a35e; }
+  #hud-height-track { height: 10px; background: rgba(255,255,255,0.25); border-radius: 5px;
+    margin-top: 6px; overflow: hidden; }
+  #hud-height-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #22c55e, #f5c542);
+    border-radius: 5px; transition: width 0.2s; }
+  #hud-timer { font-size: 26px; font-weight: 800; }
+  #hud-right { text-align: right; font-size: 18px; font-weight: 700; line-height: 1.5; }
+  #hud-lives { color: #ff5d73; letter-spacing: 2px; font-size: 20px; }
+  #hud-coins { color: #ffd166; }
+  #hud-checkpoint { font-size: 13px; color: #a7f3d0; }
+  /* Below the top-right panel: it grew a line (wallet) to ~120 px tall, so
+     the buttons start lower to clear its bottom edge. */
+  #hud-buttons { position: absolute; top: 12px; right: 12px; margin-top: 140px;
+    display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+  .hud-btn { width: 44px; height: 44px; font-size: 20px; border-radius: 10px; cursor: pointer;
+    background: rgba(8,20,40,0.62); color: #fff; border: 2px solid rgba(255,255,255,0.35); }
+  .hud-btn:hover { background: rgba(255,255,255,0.25); }
+  #hud-wind { position: absolute; top: 96px; left: 50%; transform: translateX(-50%);
+    background: rgba(120, 40, 10, 0.8); border: 2px solid #ffb347; border-radius: 10px;
+    padding: 8px 16px; font-size: 18px; font-weight: 800; letter-spacing: 1px;
+    animation: blink 0.5s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.55; } }
+  #hud-toast { position: absolute; top: 150px; left: 50%; transform: translateX(-50%);
+    background: rgba(8, 60, 30, 0.85); border: 2px solid #4ade80; border-radius: 10px;
+    padding: 8px 18px; font-size: 20px; font-weight: 800; }
+  #hud-hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 13px; background: rgba(8,20,40,0.55); padding: 6px 12px; border-radius: 8px;
+    white-space: nowrap; }
+  #hud-wallet { color: #ffd166; }
+  /* Deterministic screenshots: the height-bar transition and the wind blink
+     run on the wall clock, so a shot taken at ~1 FPS in headless Chromium
+     could catch them mid-flight. In shot mode they are frozen. */
+  html.shot * { transition: none !important; animation: none !important; }
+
+  /* ---- Market (left-side popup) ---- */
+  #market { position: fixed; left: 0; top: 0; bottom: 0; width: 380px; z-index: 30;
+    background: rgba(10, 26, 50, 0.97); border-right: 3px solid #f5c542;
+    display: flex; flex-direction: column; box-shadow: 12px 0 40px rgba(0,0,0,0.5); }
+  #market-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; }
+  #market-title { font-size: 26px; font-weight: 900; letter-spacing: 2px; color: #ffd166; flex: 1; }
+  #market-balance { font-size: 20px; font-weight: 800; color: #ffd166;
+    background: rgba(255,209,102,0.15); border: 2px solid #f5c542; border-radius: 10px;
+    padding: 4px 10px; white-space: nowrap; }
+  #market-close { width: 36px; height: 36px; font-size: 18px; border-radius: 10px; cursor: pointer;
+    background: rgba(255,255,255,0.14); color: #fff; border: 2px solid rgba(255,255,255,0.5); }
+  #market-close:hover { background: rgba(255,255,255,0.28); }
+  #market-tabs { display: flex; gap: 6px; padding: 0 14px 10px; }
+  .market-tab { flex: 1; font-size: 14px; font-weight: 800; letter-spacing: 1px; padding: 8px 0;
+    border-radius: 10px; cursor: pointer; background: rgba(255,255,255,0.10); color: #dbeafe;
+    border: 2px solid rgba(255,255,255,0.25); }
+  .market-tab.active { background: #f5c542; color: #3a2503; border-color: #fff3c4; }
+  #market-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; padding: 0 14px 14px; align-content: start; }
+  .market-item { background: rgba(255,255,255,0.07); border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 12px; padding: 10px; text-align: center; }
+  .market-swatch { height: 56px; border-radius: 8px; display: flex; align-items: center;
+    justify-content: center; font-size: 30px; margin-bottom: 8px; }
+  .market-name { font-size: 16px; font-weight: 800; }
+  .market-desc { font-size: 12px; color: #a7b8d0; margin: 2px 0 8px; min-height: 28px; }
+  .market-buy { width: 100%; font-size: 15px; font-weight: 800; padding: 7px 0; border-radius: 9px;
+    cursor: pointer; border: 2px solid #fff3c4;
+    background: linear-gradient(180deg, #ffd166, #f59e0b); color: #3a2503; }
+  .market-buy:hover { filter: brightness(1.1); }
+  .market-buy.equip { background: rgba(59,130,246,0.9); color: #fff; border-color: #93c5fd; }
+  .market-buy.equipped { background: rgba(34,197,94,0.9); color: #fff; border-color: #86efac;
+    cursor: default; }
+  .market-buy.disabled { opacity: 0.55; cursor: not-allowed; }
+  #market-foot { padding: 10px 14px; font-size: 12px; color: #a7b8d0;
+    border-top: 1px solid rgba(255,255,255,0.15); }
+  /* When the market is open, the centred cards slide right so the popup
+     does not cover them. */
+  body.market-open .overlay .card { margin-left: 380px; }
+
+  /* ---- Overlays ---- */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center;
+    justify-content: center; background: rgba(6, 14, 30, 0.45); }
+  .card { background: rgba(10, 26, 50, 0.88); border: 3px solid #f5c542; border-radius: 18px;
+    padding: 28px 36px; text-align: center; max-width: 640px; width: 92%;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6); }
+  .card h1 { font-size: 64px; font-weight: 900; letter-spacing: 3px; color: #ffd166;
+    text-shadow: 0 4px 0 #7c4a03, 0 8px 18px rgba(0,0,0,0.7); line-height: 1; }
+  .card h2 { font-size: 40px; font-weight: 900; letter-spacing: 2px; color: #ffd166;
+    text-shadow: 0 3px 0 #7c4a03; }
+  .card .tagline { font-size: 18px; margin: 10px 0 4px; color: #dbeafe; }
+  .card .best { font-size: 16px; color: #ffd166; font-weight: 700; margin: 8px 0; }
+  .controls { display: grid; grid-template-columns: auto auto; gap: 4px 16px; text-align: left;
+    font-size: 15px; margin: 16px auto 4px; width: fit-content; color: #e5e7eb; }
+  .controls b { color: #ffd166; }
+  .big-btn { display: inline-block; margin-top: 18px; font-size: 24px; font-weight: 900;
+    letter-spacing: 2px; color: #3a2503; background: linear-gradient(180deg, #ffd166, #f59e0b);
+    border: 3px solid #fff3c4; border-radius: 14px; padding: 12px 34px; cursor: pointer;
+    box-shadow: 0 6px 0 #92400e, 0 10px 20px rgba(0,0,0,0.5); }
+  .big-btn:hover { filter: brightness(1.1); }
+  .big-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #92400e; }
+  .ghost-btn { display: inline-block; margin: 14px 6px 0; font-size: 17px; font-weight: 700;
+    color: #fff; background: rgba(255,255,255,0.14); border: 2px solid rgba(255,255,255,0.5);
+    border-radius: 12px; padding: 9px 20px; cursor: pointer; }
+  .ghost-btn:hover { background: rgba(255,255,255,0.28); }
+  .stats { font-size: 19px; line-height: 1.9; margin: 12px 0; }
+  .stats b { color: #ffd166; }
+  .score-big { font-size: 34px; font-weight: 900; color: #ffd166; }
+  #title-screen { background: linear-gradient(180deg, rgba(6,14,30,0.15), rgba(6,14,30,0.72)); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud" class="hidden">
+  <div id="hud-top">
+    <div id="hud-left" class="hud-panel">
+      <div id="hud-height">0 m / 88 m</div>
+      <div id="hud-zone" data-zone="forest">FOREST FOOTHILLS</div>
+      <div id="hud-height-track"><div id="hud-height-bar"></div></div>
+    </div>
+    <div id="hud-timer" class="hud-panel">00:00</div>
+    <div id="hud-right" class="hud-panel">
+      <div id="hud-coins">🪙 0 / 30</div>
+      <div id="hud-wallet">💰 0</div>
+      <div id="hud-lives">♥♥♥</div>
+      <div id="hud-checkpoint">Checkpoint 1/3</div>
+    </div>
+  </div>
+  <div id="hud-buttons">
+    <button class="hud-btn" id="btn-market" title="Market (B)">🛒</button>
+    <button class="hud-btn" id="btn-pause" title="Pause (P)">⏸</button>
+    <button class="hud-btn" id="btn-mute" title="Sound (M)">🔊</button>
+  </div>
+  <div id="hud-wind" class="hidden">💨 STRONG WIND! Hold your ground!</div>
+  <div id="hud-toast" class="hidden"></div>
+  <div id="hud-hint">WASD move · Space jump · Shift run · Drag mouse for camera · P pause · R restart</div>
+</div>
+
+<div id="title-screen" class="overlay">
+  <div class="card">
+    <h1>SUMMIT BLOCKS</h1>
+    <div class="tagline">Climb an 88-metre mountain, cross 3 zones, and claim the summit flag!</div>
+    <div class="best hidden" id="title-best"><span id="best-score"></span></div>
+    <div class="controls">
+      <span><b>WASD / Arrows</b></span><span>Move</span>
+      <span><b>Space</b></span><span>Jump</span>
+      <span><b>Shift</b></span><span>Run</span>
+      <span><b>Drag mouse</b></span><span>Rotate camera</span>
+      <span><b>P / Esc</b></span><span>Pause</span>
+      <span><b>R</b></span><span>Restart from the beginning</span>
+      <span><b>M</b></span><span>Sound on/off</span>
+    </div>
+    <div class="tagline" style="font-size:15px">🪙 Collect gold coins · 🚩 Touch the checkpoint flags · ❤ Falling costs 1 life</div>
+    <button class="big-btn" id="btn-start">▲ START CLIMB</button><br>
+    <button class="ghost-btn" id="btn-market-title">🛒 MARKET</button>
+  </div>
+</div>
+
+<div id="market" class="hidden">
+  <div id="market-head">
+    <div id="market-title">🛒 MARKET</div>
+    <div id="market-balance">🪙 <span id="market-coins">0</span></div>
+    <button id="market-close" title="Close (Esc)">✕</button>
+  </div>
+  <div id="market-tabs">
+    <button class="market-tab active" data-cat="skins">SKINS</button>
+    <button class="market-tab" data-cat="hats">HATS</button>
+    <button class="market-tab" data-cat="trails">TRAILS</button>
+    <button class="market-tab" data-cat="gear">GEAR</button>
+  </div>
+  <div id="market-grid"></div>
+  <div id="market-foot">Coins are earned by climbing. Spend them on skins, hats, trails and gear — press B to open the market anywhere.</div>
+</div>
+
+<div id="pause-screen" class="overlay hidden">
+  <div class="card">
+    <h2>PAUSED</h2>
+    <div class="tagline">Take a breather, climber. The mountain is waiting.</div>
+    <button class="big-btn" id="btn-resume">▶ RESUME</button><br>
+    <button class="ghost-btn" id="btn-market-pause">🛒 MARKET</button>
+    <button class="ghost-btn" id="btn-restart-pause">↻ RESTART</button>
+    <button class="ghost-btn" id="btn-title-pause">⌂ MAIN MENU</button>
+  </div>
+</div>
+
+<div id="victory-screen" class="overlay hidden">
+  <div class="card">
+    <h2>🏆 SUMMIT REACHED!</h2>
+    <div class="tagline">You conquered the 88-metre mountain!</div>
+    <div class="stats">
+      ⏱ Time: <b id="victory-time">00:00</b><br>
+      🪙 Coins: <b id="victory-coins">0 / 30</b><br>
+      💀 Falls: <b id="victory-deaths">0</b><br>
+      <span class="score-big">Score: <span id="victory-score">0</span></span><br>
+      <span id="victory-best"></span>
+    </div>
+    <button class="big-btn" id="btn-again">▲ CLIMB AGAIN</button><br>
+    <button class="ghost-btn" id="btn-menu-victory">⌂ MAIN MENU</button>
+  </div>
+</div>
+
+<div id="gameover-screen" class="overlay hidden">
+  <div class="card">
+    <h2>😵 GAME OVER</h2>
+    <div class="tagline">Three lives spent. The mountain wins this time.</div>
+    <div class="stats">
+      Height reached: <b id="gameover-height">0 m</b><br>
+      🪙 Coins: <b id="gameover-coins">0 / 30</b><br>
+      Score: <b id="gameover-score">0</b>
+    </div>
+    <button class="big-btn" id="btn-retry">↻ TRY AGAIN</button><br>
+    <button class="ghost-btn" id="btn-menu-gameover">⌂ MAIN MENU</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "./vendor/three.core.js": "./vendor/three.core.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
